@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Analysis &amp; Strategy Lab</title>
+  <!-- ?v= busts stale browser caches — bump it when shipping changes -->
+  <link rel="stylesheet" href="css/styles.css?v=7" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <h1>Stock Analysis &amp; Strategy Lab</h1>
+      <p class="subtitle">Load price data, analyze it with technical indicators, get a strategy recommendation — and learn how each strategy works.</p>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- ============ Controls ============ -->
+    <section class="panel controls-panel" aria-label="Data controls">
+      <div class="controls-row">
+        <div class="control">
+          <label for="symbol-input">Ticker symbol</label>
+          <div class="symbol-box">
+            <input id="symbol-input" type="text" value="AAPL" autocomplete="off" spellcheck="false" placeholder="e.g. AAPL, MSFT, ^GSPC" />
+            <button id="browse-btn" class="btn btn-secondary" type="button" title="Pick from every available ticker">Browse all &#9662;</button>
+          </div>
+        </div>
+        <div class="control">
+          <label for="source-select">Data source</label>
+          <select id="source-select">
+            <option value="tradingview" selected>TradingView (live ratings &amp; chart; history via Yahoo)</option>
+            <option value="yahoo">Yahoo Finance (live, free, full history)</option>
+            <option value="alphavantage">Alpha Vantage (live, needs free API key)</option>
+          </select>
+        </div>
+        <div class="control" id="apikey-control" hidden>
+          <label for="apikey-input">API key</label>
+          <input id="apikey-input" type="password" autocomplete="off" placeholder="Free key from alphavantage.co" />
+        </div>
+        <div class="control">
+          <label for="capital-input">Amount to invest ($)</label>
+          <input id="capital-input" type="number" value="10000" min="0" step="100" />
+        </div>
+        <div class="control control-btn">
+          <button id="load-btn" class="btn btn-primary">Load &amp; analyze</button>
+        </div>
+      </div>
+      <div class="search-row">
+        <div class="control search-control">
+          <label for="search-input">Search any stock, ETF, or index by name (live Yahoo/Google-style search)</label>
+          <div class="search-box">
+            <input id="search-input" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. Apple, Tesla, Nvidia, S&amp;P 500…" />
+            <button id="search-btn" class="btn btn-primary" type="button">Search</button>
+          </div>
+          <div class="search-results" id="search-results" hidden></div>
+        </div>
+      </div>
+      <p class="hint" id="source-hint">
+        Everything is live data: search any stock, ETF, or index and its entire available history loads —
+        no API key needed. An interactive <b>TradingView</b> chart of the same symbol is embedded below the
+        analysis. Alpha Vantage is a second live source
+        (<a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener">free key</a>).
+        For the S&amp;P 500 type <b>SP500</b> or <b>^GSPC</b> (index, history since 1927) — or <b>SPY</b>,
+        the tradeable S&amp;P 500 ETF.
+      </p>
+      <p class="status" id="status-msg" role="status"></p>
+      <button id="retry-btn" class="btn btn-secondary" type="button" hidden>Retry loading history</button>
+    </section>
+
+    <!-- ============ Stat tiles ============ -->
+    <section class="tiles" id="stat-tiles" aria-label="Key statistics" hidden>
+      <div class="tile">
+        <div class="tile-label">Last close</div>
+        <div class="tile-value" id="tile-price">–</div>
+        <div class="tile-delta" id="tile-change">–</div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">Period range</div>
+        <div class="tile-value" id="tile-range">–</div>
+        <div class="tile-delta muted" id="tile-range-note">low – high</div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">RSI (14)</div>
+        <div class="tile-value" id="tile-rsi">–</div>
+        <div class="tile-delta muted" id="tile-rsi-note">–</div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">Volatility (annualized)</div>
+        <div class="tile-value" id="tile-vol">–</div>
+        <div class="tile-delta muted" id="tile-vol-note">20-day stdev of returns</div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">Trend regime</div>
+        <div class="tile-value" id="tile-trend">–</div>
+        <div class="tile-delta muted" id="tile-trend-note">SMA 20 vs SMA 50</div>
+      </div>
+    </section>
+
+    <!-- ============ Price chart ============ -->
+    <section class="panel chart-panel" id="chart-section" hidden>
+      <div class="chart-header">
+        <h2 id="chart-title">Price</h2>
+        <div class="chart-toggles" role="group" aria-label="Chart options">
+          <label class="toggle"><input type="checkbox" id="toggle-candles" /> Candles</label>
+          <label class="toggle"><input type="checkbox" id="toggle-sma20" checked /> SMA 20</label>
+          <label class="toggle"><input type="checkbox" id="toggle-sma50" checked /> SMA 50</label>
+          <label class="toggle"><input type="checkbox" id="toggle-bb" /> Bollinger (20, 2)</label>
+          <label class="toggle"><input type="checkbox" id="toggle-log" /> Log scale</label>
+          <label class="toggle"><input type="checkbox" id="toggle-table" /> Data table</label>
+        </div>
+      </div>
+      <div class="chart-tools" id="range-row" role="group" aria-label="Time range">
+        <span class="tools-label">Range:</span>
+        <button class="tool-btn" data-range="HOURLY" type="button">Hourly</button>
+        <button class="tool-btn" data-range="1D" type="button">1D</button>
+        <button class="tool-btn" data-range="5D" type="button">5D</button>
+        <button class="tool-btn" data-range="1M" type="button">1M</button>
+        <button class="tool-btn" data-range="6M" type="button">6M</button>
+        <button class="tool-btn" data-range="1Y" type="button">1Y</button>
+        <button class="tool-btn" data-range="3Y" type="button">3Y</button>
+        <button class="tool-btn" data-range="5Y" type="button">5Y</button>
+        <button class="tool-btn active" data-range="ALL" type="button">All</button>
+        <span class="tool-hint" id="range-hint"></span>
+      </div>
+      <p class="hint">Details below show the latest bar — click any point on a chart to inspect a different one.</p>
+      <div class="point-details" id="point-details" hidden>
+        <div class="pd-date" id="pd-date"></div>
+        <div class="pd-grid" id="pd-grid"></div>
+      </div>
+      <div class="legend" id="price-legend" aria-hidden="false"></div>
+      <div class="chart-wrap">
+        <canvas id="price-chart" height="360"></canvas>
+      </div>
+
+      <h3 class="subchart-title">RSI (14)</h3>
+      <div class="chart-wrap">
+        <canvas id="rsi-chart" height="120"></canvas>
+      </div>
+
+      <h3 class="subchart-title">MACD (12, 26, 9)</h3>
+      <div class="legend" id="macd-legend"></div>
+      <div class="chart-wrap">
+        <canvas id="macd-chart" height="140"></canvas>
+      </div>
+
+      <div class="table-wrap" id="data-table-wrap" hidden>
+        <table id="data-table">
+          <caption>Most recent 30 trading days</caption>
+          <thead>
+            <tr><th>Date</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th><th>SMA 20</th><th>RSI 14</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ TradingView analysis & suggestions ============ -->
+    <section class="panel" id="tva-section" hidden>
+      <h2>TradingView analysis — what to do next</h2>
+      <p class="hint" id="tva-status">Loading TradingView analysis…</p>
+      <div id="tva-body" hidden>
+        <div class="tva-ratings" id="tva-ratings"></div>
+        <div class="pd-grid" id="tva-grid"></div>
+        <div class="reco-card" id="tva-suggestion"></div>
+      </div>
+    </section>
+
+    <!-- ============ TradingView ============ -->
+    <section class="panel" id="tv-section" hidden>
+      <h2>TradingView live chart</h2>
+      <p class="hint">The same symbol on TradingView — live quotes, their full charting toolkit, and any indicator they offer. Change the symbol inside the widget to explore without leaving the page.</p>
+      <p class="hint" id="tv-note"></p>
+      <div class="tv-container" id="tv-widget"></div>
+    </section>
+
+    <!-- ============ Recommendation ============ -->
+    <section class="panel" id="reco-section" hidden>
+      <h2>Strategy recommendation</h2>
+      <div class="reco-card" id="reco-card"></div>
+      <h3>How every strategy scored on this data</h3>
+      <p class="hint">Each strategy is backtested on the loaded history (long when its rule says buy, in cash otherwise), then scored for how well it fits the current market regime. Past performance never guarantees future results — this is an educational tool, not financial advice.</p>
+      <div class="table-wrap">
+        <table id="strategy-table">
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th>Current signal</th>
+              <th>Regime fit</th>
+              <th>Backtest return</th>
+              <th>Buy &amp; hold</th>
+              <th>Win rate</th>
+              <th>Max drawdown</th>
+              <th>Trades</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ Learn ============ -->
+    <section class="panel" id="learn-section">
+      <h2>Learn the strategies</h2>
+      <p class="hint">Click any card for a full lesson: how the strategy works, the exact rules, when it shines, and where it fails — from long-horizon investing down to intraday day trading.</p>
+      <div id="learn-groups"></div>
+    </section>
+
+    <footer class="app-footer">
+      <p>Educational project — not financial advice.</p>
+    </footer>
+  </main>
+
+  <!-- ============ Lesson modal ============ -->
+  <div class="modal-backdrop" id="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button class="modal-close" id="modal-close" aria-label="Close lesson">&times;</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="js/indicators.js?v=7"></script>
+  <script src="js/data.js?v=7"></script>
+  <script src="js/strategies.js?v=7"></script>
+  <script src="js/chart.js?v=7"></script>
+  <script src="js/app.js?v=7"></script>
+</body>
+</html>
