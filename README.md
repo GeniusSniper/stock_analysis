@@ -71,23 +71,61 @@ on open — an internet connection is required.
   portfolio-volatility target, and a 25% single-position cap — shown as
   % of capital, dollars, and share count, recalculated live as you edit
   the amount.
-- **Auto-researcher (robo-investor, on `simulation.html`)** — press Start
-  and the app invests by itself: it screens the **entire ~20,000-stock US
-  universe** in one sweep (quality floors: price > $5, liquid, market-cap
-  floor of your choice; ranked 70% TradingView technical rating / 30%
-  6-month momentum), then **grinds down the ranked list indefinitely** —
-  for each stock it loads ~10 years of history, detects the market
-  regime, backtests all six strategies, and reaches a BUY / WATCH / SKIP
-  verdict with a composite score (45% own engine + 30% TradingView + 25%
-  signal actionability − drawdown penalty), narrating every step in a
-  live research diary. It **fully automatically manages the practice
-  paper-portfolio**: holds its top 5 BUYs, sells what drops out (with
-  hysteresis so ranks reshuffling doesn't churn trades), keeps a hard 20%
-  cash reserve, and assigns each holding its best-fit strategy. The
-  ranked report (click a row to race that stock), the grind position, and
-  the portfolio all persist — reopening the page resumes where it left
-  off. Save the full research report to JSON anytime. Virtual money,
-  education only.
+- **Auto-trader (on `simulation.html`)** — a robot that lives through the
+  market on its own, under strict rules:
+  - **Born five years in the past with $1,000** of virtual money, in a
+    ~24-stock world that is a **merit mix, not just the biggest**: four
+    screens — largest, strongest 3-month movers, best-rated technicals,
+    most traded — deduped, within the size band you choose (large / mid /
+    small / micro caps, or all sizes). It lives forward **one market day
+    at a time** and **can never look ahead**: every decision uses only
+    prices up to its simulated day, all indicators are trailing, fills
+    happen at that day's close, and it may only act on its strategies'
+    signals — never on known outcomes.
+  - **It carries a monthly goal** (default **$2,000/month**, editable):
+    every simulated month is scored against it. A missed month makes it
+    trade **hungrier** the next — lower entry bar, bigger positions,
+    thinner cash reserve, more option budget (hard caps still apply) — a
+    met month calms it down. Its summary does the honest math: at its
+    real pace it tells you how much *capital* earning $2,000 every month
+    would actually take, because no strategy honestly turns $1,000 into
+    $2,000 a month.
+  - **Progression**: short-term trading only (RSI/Bollinger mean
+    reversion, fast MACD momentum — max 2 positions, sold the moment
+    their signal turns) until the account reaches **10× its start**
+    ($1,000 → $10,000), which **unlocks long-term holding** (slow trend
+    strategies, up to 3 more positions). A 20% cash reserve always.
+  - **It tries different strategies and learns from its investments**:
+    before any buy it *auditions* the signaling strategy on that stock's
+    own trailing year (did it actually beat just holding?), and
+    per-strategy weights follow its own win rates (Laplace-smoothed,
+    0.60–1.40) — strategies that win for it get picked more; the
+    learning table shows exactly what it has concluded so far.
+  - **It trades calls and puts too** — a capped options sleeve (up to two
+    1-month at-the-money contracts, ≤10% of equity in premium): calls to
+    ride strong buy signals it has no stock slot for, puts to profit from
+    fresh downtrends. No historical option quotes exist, so it prices
+    them honestly itself with **Black-Scholes** fed only by each day's
+    close and trailing 20-day realized volatility — the no-lookahead rule
+    holds. A full **Options: Calls & Puts lesson** joins the short-term
+    curriculum.
+  - **It reads the news — but only at the present day**: once caught up,
+    it fetches real headlines for each holding (Yahoo Finance, via the
+    same proxy chain) and scores them with plain word-counting sentiment
+    — positive-news holdings get practice-mirror top-ups first, negative
+    ones get none. During the rewind news is banned: reading today's
+    stories about the past would be looking up answers.
+  - **It remembers**: cash, positions, journal, learned weights, and the
+    day it reached persist — stop anytime, reopen later, the same life
+    continues; when it catches up to the present it mirrors its holdings
+    into the practice portfolio and waits for the next market day.
+  - Everything is narrated (a research diary with every buy/sell and
+    why), summarized in plain language (what it's doing, amounts
+    invested, returns, timeframes), drawn as an equity curve with the
+    start and unlock milestones, and saved on demand — plus, once you
+    **link the project's `data/` folder**, it auto-writes
+    `auto_trader_life.json`, `journal.csv`, and `equity_curve.csv` there
+    at every checkpoint. Virtual money, education only.
 - **Strategy race simulator — its own page (`simulation.html`)** — every
   strategy runs as an independent simulated agent: each starts with
   **$1,000** on the first day of a stock's history and follows its rules
@@ -145,7 +183,8 @@ on open — an internet connection is required.
 | `index.html` | Main page: controls, stat tiles, charts, recommendation, practice, learn |
 | `simulation.html` | Strategy race simulator page: all-stocks directory + the $1,000 agent race |
 | `js/sim-page.js` | Simulator-page wiring: directory, staged loading, race chart, session compare |
-| `js/auto-research.js` | Auto-researcher: universe screening, the research grind, scoring, robo-portfolio |
+| `js/auto-research.js` | Auto-trader: 5-year no-lookahead life simulation, learning, memory, data/ export |
+| `data/` | The auto-trader's output files (life report, trade journal, equity curve) once linked |
 | `css/styles.css` | Theme tokens (light + dark) and all styling |
 | `js/indicators.js` | Indicator math (SMA, EMA, RSI, MACD, Bollinger, volatility, regime detection) |
 | `js/data.js` | Yahoo Finance + Alpha Vantage fetchers, symbol search, hourly fallback |

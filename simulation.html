@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Strategy Race Simulator — Stock Analysis &amp; Strategy Lab</title>
   <!-- ?v= busts stale browser caches — bump it when shipping changes -->
-  <link rel="stylesheet" href="css/styles.css?v=13" />
+  <link rel="stylesheet" href="css/styles.css?v=17" />
 </head>
 <body>
   <header class="app-header">
@@ -18,42 +18,63 @@
 
   <main class="container">
 
-    <!-- ============ Auto-researcher ============ -->
-    <section class="panel" id="auto-panel" aria-label="Auto researcher">
-      <h2>Auto-researcher — it picks the stocks</h2>
+    <!-- ============ Auto-trader ============ -->
+    <section class="panel" id="auto-panel" aria-label="Auto trader">
+      <h2>Auto-trader — it lives through the market on its own</h2>
       <p class="hint">
-        Press Start and the app works on its own: it screens the <b>entire US universe</b>
-        (~20,000 stocks) in one sweep, then grinds down the ranked candidate list — for each stock
-        it loads ~10 years of history, detects the market regime, backtests all six strategies,
-        and reaches a BUY / WATCH / SKIP verdict. It <b>automatically manages the practice
-        portfolio</b> with virtual money — 60% in up to 3 <b>long-term holds</b>, 20% in up to 2
-        <b>short-term trades</b> (fast mean-reversion setups, sold when their signal turns), and a
-        20% cash reserve — selling whatever drops out of its lists. It researches forever until
-        you press Stop, and explains every decision below. Deep research is
-        deliberately slow (~2–60&nbsp;s per stock — public data feeds). Virtual money, education
-        only — not financial advice.
+        This robot is born <b>five years in the past</b> with <b>$1,000</b> of virtual money and
+        lives forward one market day at a time. Its world is a <b>merit mix</b> — the biggest
+        stocks PLUS the strongest recent movers, the best-rated, and the most traded — not just
+        the largest by size. It carries a <b>monthly goal</b> (default $2,000): a missed month
+        makes it trade hungrier the next (lower entry bar, bigger positions, more option budget —
+        hard caps still apply), and its summary tells you honestly how much capital that goal
+        really needs. The rules it must obey: it <b>cannot look ahead</b>
+        — every decision uses only prices up to its current simulated day, and it may only act on
+        its strategies' signals, never on known outcomes. It is limited to <b>short-term trading</b>
+        (mean reversion, fast momentum) until the account reaches <b>10× its start</b> — that
+        unlocks <b>long-term holding</b>. It <b>tries different strategies</b>: before any buy it
+        auditions the signaling strategy on that stock's own trailing year — did it actually beat
+        just holding? — and it <b>learns from every closed trade</b> (strategies that win for it
+        get used more). It can also spend a small capped slice on <b>call and put options</b>
+        (1-month, at-the-money, priced by Black-Scholes from trailing volatility only) — calls to
+        ride signals it has no stock slot for, puts to profit from fresh downtrends. It
+        <b>remembers everything</b>: stop anytime, close the page, come back —
+        the same life continues where it left off. When it catches up to today it <b>reads real
+        news headlines</b> for its holdings (word-counting, no AI — news is banned during the
+        rewind, that would be looking up answers), mirrors its holdings into the practice
+        portfolio, and waits for the next market day. Virtual money, education only — not
+        financial advice.
       </p>
       <div class="controls-row">
         <div class="control">
-          <label for="auto-capital">Starting virtual cash ($)</label>
-          <input id="auto-capital" type="number" value="10000" min="100" step="100" />
+          <label for="auto-capital">Its starting cash ($ — 10× this unlocks long-term)</label>
+          <input id="auto-capital" type="number" value="1000" min="100" step="100" />
         </div>
         <div class="control">
-          <label for="auto-mincap">Company size floor</label>
+          <label for="auto-goal">Its monthly goal ($ it must try to earn)</label>
+          <input id="auto-goal" type="number" value="2000" min="100" step="100" />
+        </div>
+        <div class="control">
+          <label for="auto-mincap">Its world: which stocks exist (applies to a new life)</label>
           <select id="auto-mincap">
-            <option value="300000000">Over $300M (small caps and up)</option>
-            <option value="2000000000" selected>Over $2B (mid caps and up)</option>
-            <option value="10000000000">Over $10B (large caps only)</option>
+            <option value="all" selected>All sizes — a merit mix ($300M and up)</option>
+            <option value="large">Large caps only (over $10B)</option>
+            <option value="mid">Mid caps ($2B–$10B)</option>
+            <option value="small">Small caps ($300M–$2B)</option>
+            <option value="micro">Micro caps ($50M–$300M)</option>
           </select>
         </div>
         <div class="control control-btn">
-          <button id="auto-start" class="btn btn-primary" type="button">Start researching</button>
+          <button id="auto-start" class="btn btn-primary" type="button">Start / continue its life</button>
         </div>
       </div>
       <p class="status" id="auto-status" role="status"></p>
       <div class="tiles" id="auto-portfolio" hidden></div>
       <div id="auto-brief" hidden>
         <div class="reco-card" id="auto-summary"></div>
+        <div class="chart-wrap" id="auto-equity-wrap" hidden>
+          <canvas id="auto-equity" height="160"></canvas>
+        </div>
         <div class="table-wrap" id="auto-holdings-wrap" hidden>
           <h3>What it holds right now</h3>
           <table id="auto-holdings">
@@ -65,12 +86,13 @@
                 <th>Invested</th>
                 <th>Now worth</th>
                 <th>Return</th>
-                <th>Held since</th>
+                <th>Held since (simulated)</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
+        <div class="reco-card" id="auto-news" hidden></div>
       </div>
       <div class="auto-log" id="auto-log" hidden></div>
       <div id="auto-results" hidden>
@@ -80,23 +102,21 @@
           <table id="auto-table">
             <thead>
               <tr>
-                <th>#</th>
                 <th>Stock</th>
-                <th>Verdict</th>
-                <th>Score</th>
-                <th>TV rating</th>
-                <th>Best strategy</th>
-                <th>Signal</th>
-                <th>Strategy vs B&amp;H</th>
-                <th>Regime / reason</th>
+                <th>Position</th>
+                <th>Its trades</th>
+                <th>Win rate</th>
+                <th>P&amp;L from it</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
         <div class="sim-actions">
-          <button id="auto-save" class="btn btn-primary" type="button">Save research report (JSON)</button>
+          <button id="auto-save" class="btn btn-primary" type="button">Save its life report (JSON)</button>
+          <button id="auto-folder-btn" class="btn btn-secondary" type="button">Link data folder</button>
         </div>
+        <p class="hint" id="auto-folder-note"></p>
       </div>
     </section>
 
@@ -191,13 +211,13 @@
     </footer>
   </main>
 
-  <script src="js/indicators.js?v=13"></script>
-  <script src="js/data.js?v=13"></script>
-  <script src="js/strategies.js?v=13"></script>
-  <script src="js/simulation.js?v=13"></script>
-  <script src="js/practice.js?v=13"></script>
-  <script src="js/chart.js?v=13"></script>
-  <script src="js/sim-page.js?v=13"></script>
-  <script src="js/auto-research.js?v=13"></script>
+  <script src="js/indicators.js?v=17"></script>
+  <script src="js/data.js?v=17"></script>
+  <script src="js/strategies.js?v=17"></script>
+  <script src="js/simulation.js?v=17"></script>
+  <script src="js/practice.js?v=17"></script>
+  <script src="js/chart.js?v=17"></script>
+  <script src="js/sim-page.js?v=17"></script>
+  <script src="js/auto-research.js?v=17"></script>
 </body>
 </html>

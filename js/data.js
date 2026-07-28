@@ -185,6 +185,31 @@ const DataSource = (() => {
       }));
   }
 
+  /** Recent news headlines for a ticker — same Yahoo search endpoint as
+      searchSymbols, with newsCount instead of quotesCount. Cached per
+      symbol for 10 minutes: the endpoint throttles by IP and headlines
+      don't change faster than that. Returns [{title, publisher, link,
+      publishedAt}]. */
+  const newsCache = new Map();
+  async function fetchNews(symbol, count = 8) {
+    const key = String(symbol).toUpperCase();
+    const hit = newsCache.get(key);
+    if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.items;
+    const url = 'https://query1.finance.yahoo.com/v1/finance/search?quotesCount=0&newsCount='
+      + count + '&q=' + encodeURIComponent(symbol);
+    const json = await fetchJsonWithProxies(url);
+    const items = (json.news || [])
+      .filter(n => n && n.title)
+      .map(n => ({
+        title: String(n.title),
+        publisher: n.publisher ? String(n.publisher) : '',
+        link: typeof n.link === 'string' && /^https?:\/\//i.test(n.link) ? n.link : '',
+        publishedAt: n.providerPublishTime ? new Date(n.providerPublishTime * 1000).toISOString() : null,
+      }));
+    newsCache.set(key, { at: Date.now(), items });
+    return items;
+  }
+
   /* ----------------------------------------------------------
      TradingView scanner — the API behind their stock screener.
      Returns TradingView's own computed indicators AND their
@@ -433,5 +458,5 @@ const DataSource = (() => {
     return fetchYahooDailyFull(symbol);
   }
 
-  return { load, loadFullHistory, loadHourly, searchSymbols, fetchTradingViewAnalysis, browseSymbols, screenStocks, normalizeSymbol, fetchQuotes, resolveTicker };
+  return { load, loadFullHistory, loadHourly, searchSymbols, fetchNews, fetchTradingViewAnalysis, browseSymbols, screenStocks, normalizeSymbol, fetchQuotes, resolveTicker };
 })();

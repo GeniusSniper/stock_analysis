@@ -792,6 +792,7 @@ const Practice = (() => {
     // persistence
     saveNow, exportText, importFromText, applyImport, storageInfo,
     linkSaveFile, reconnectSaveFile, unlinkSaveFile,
+    idbGet, idbSet, idbDel, withTimeout,
     // data bridge + signals
     notifyDataLoaded, getMainData, ensureBars, getCachedBars, computeSignal, refreshSignals, refreshQuotes,
   };

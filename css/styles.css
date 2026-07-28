@@ -621,6 +621,12 @@ tr.recommended td { background: color-mix(in srgb, var(--accent) 8%, transparent
 #auto-table tbody tr { cursor: pointer; }
 #auto-table tbody tr:hover td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 
+/* The auto-trader's present-day news check */
+.news-block { margin: 10px 0 4px; }
+.news-list { margin: 6px 0 0 18px; padding: 0; }
+.news-list li { margin: 3px 0; }
+.news-src { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+
 /* ============ Practice investing ============ */
 .up   { color: var(--delta-up); }
 .down { color: var(--delta-down); }

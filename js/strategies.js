@@ -375,6 +375,35 @@ const Strategies = (() => {
         tip: 'Look at the volume column in the Hourly data table: bursts of 2–3× the neighboring bars mark the "in-play" hours where scalpers operate — and notice how quickly those bursts fade.',
       },
     },
+    {
+      id: 'options-basics',
+      name: 'Options: Calls & Puts',
+      type: 'Derivatives — know the tool',
+      summary: 'A call is the right to buy a stock at a set price, a put the right to sell. Small stakes, big swings, built-in expiry — the auto-trader uses them in a capped sleeve.',
+      lesson: {
+        what: 'An option is a contract on a stock, not the stock itself. A <b>call</b> gives you the right (never the obligation) to BUY 100 shares at a fixed "strike" price until an expiry date — you profit when the stock rises well above the strike. A <b>put</b> gives you the right to SELL at the strike — it profits when the stock falls, which makes it the simplest way to trade a downtrend without shorting. The price you pay for the contract is the <b>premium</b>, and it can go to zero: an option that expires "out of the money" is worth exactly nothing. That combination — small outlay, leveraged payoff, hard deadline — is why options both attract and destroy beginners.',
+        rules: [
+          '<b>Buy a call</b> when you expect a clear rise before a specific date; <b>buy a put</b> when you expect a clear fall. Vague opinions with no timeframe are not option trades.',
+          '<b>Risk only the premium</b>: buying options can never lose more than you paid — but the premium routinely goes to zero, so size it like money you can lose entirely (the auto-trader caps its whole option sleeve at ~10% of the account).',
+          '<b>Mind the clock</b>: every day that passes eats the premium ("theta decay"). Being right about direction but late by two weeks still loses.',
+          '<b>Mind volatility</b>: premiums are priced from expected wildness. Calm stock → cheap options; wild stock → expensive ones. Buying expensive options after a panic is paying top dollar for insurance that is already priced in.',
+          '<b>Selling (writing) options is a different, riskier business</b> — a written call has unlimited loss potential. Learn buying first; treat writing as an advanced topic.',
+        ],
+        formula: 'Black-Scholes prices a call as S·N(d₁) − K·N(d₂), where S is the stock price, K the strike, N the normal curve, and d₁, d₂ depend on volatility σ and time T. Intuition beats symbols: premium ≈ intrinsic value (what exercising is worth now) + time value (a bet on σ√T — how far the stock could wander before expiry). The auto-trader uses exactly this formula, fed only by each day\'s close and the stock\'s trailing 20-day volatility.',
+        strengths: [
+          'Defined risk when buying: the premium is the whole downside — no margin calls, no unlimited loss.',
+          'Puts make falling markets tradeable — the one direction a long-only stock account cannot earn from.',
+          'Leverage: a few percent of the account can express a conviction that would otherwise need a full position.',
+        ],
+        weaknesses: [
+          'Most bought options expire worthless — the deadline and decay work against you every day.',
+          'Leverage cuts both ways: a 100% loss of premium is a normal Tuesday, not a disaster scenario.',
+          'Real-world frictions are heavy: wide spreads, per-contract fees, and assignment mechanics that this simulation deliberately leaves out.',
+        ],
+        bestFor: 'Traders who already have a signal with a direction AND a timeframe, and who can afford the premium going to zero. As portfolio insurance (protective puts) for long-term holders.',
+        tip: 'Watch the auto-trader\'s diary on the simulator page: every option it buys names the signal, the strike, the expiry, and the volatility that priced it — then watch what expiry does to the ones that were merely "right too late".',
+      },
+    },
   ];
 
   // ---------- backtesting ----------
