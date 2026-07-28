@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Stock Analysis &amp; Strategy Lab</title>
   <!-- ?v= busts stale browser caches — bump it when shipping changes -->
-  <link rel="stylesheet" href="css/styles.css?v=7" />
+  <link rel="stylesheet" href="css/styles.css?v=13" />
 </head>
 <body>
   <header class="app-header">
     <div class="header-inner">
       <h1>Stock Analysis &amp; Strategy Lab</h1>
       <p class="subtitle">Load price data, analyze it with technical indicators, get a strategy recommendation — and learn how each strategy works.</p>
+      <p class="header-links"><a href="simulation.html">Strategy race simulator — six $1,000 agents on any stock &rarr;</a></p>
     </div>
   </header>
 
@@ -200,6 +201,243 @@
       </div>
     </section>
 
+    <!-- ============ Practice investing ============ -->
+    <section class="panel" id="practice-section">
+      <h2>Practice investing</h2>
+      <p class="hint">
+        Practice with virtual money — no real dollars involved. <b>Live portfolio</b>: build a
+        multi-stock portfolio at today's real prices, give every stock its own strategy (change it
+        anytime), and watch each one's live Buy / Sell / Stay-in-cash signal.
+        <b>Replay trainer</b>: travel back to any date and trade forward one day at a time against
+        a strategy advisor — then see whether you beat the six automated agents. Your progress
+        auto-saves and reloads when you come back.
+      </p>
+      <div class="chart-tools" id="practice-tabs" role="tablist" aria-label="Practice mode">
+        <button class="tool-btn active" data-ptab="portfolio" role="tab" aria-selected="true" type="button">Live portfolio</button>
+        <button class="tool-btn" data-ptab="replay" role="tab" aria-selected="false" type="button">Replay trainer</button>
+      </div>
+
+      <!-- ===== Live portfolio pane ===== -->
+      <div id="practice-portfolio" role="tabpanel">
+        <div class="reconnect-banner" id="practice-reconnect" hidden>
+          <span>Your practice portfolio is linked to a save file — click to resume auto-saving to it.</span>
+          <button class="btn btn-primary" id="practice-reconnect-btn" type="button">Reconnect save file</button>
+        </div>
+        <div class="reconnect-banner" id="practice-external" hidden>
+          <span>Your practice state changed in another tab.</span>
+          <button class="btn btn-secondary" id="practice-external-reload" type="button">Reload state</button>
+        </div>
+
+        <div class="practice-storage">
+          <button class="btn btn-secondary" id="practice-create-btn" type="button">Create save file</button>
+          <button class="btn btn-secondary" id="practice-link-btn" type="button">Link existing save file</button>
+          <button class="btn btn-secondary" id="practice-export-btn" type="button">Export practice file (JSON)</button>
+          <button class="btn btn-secondary" id="practice-import-btn" type="button">Load practice file</button>
+          <input type="file" id="practice-import-input" accept=".json,application/json" hidden />
+          <button class="btn btn-secondary" id="practice-reset-btn" type="button">Reset account</button>
+          <span class="hint" id="practice-save-status"></span>
+        </div>
+
+        <div id="practice-setup" hidden>
+          <p class="hint">Start a practice account — pick how much virtual cash to begin with.</p>
+          <div class="practice-add">
+            <label for="practice-cash-input">Starting cash ($)</label>
+            <input id="practice-cash-input" type="number" min="1" step="100" value="10000" />
+            <button class="btn btn-primary" id="practice-start-btn" type="button">Start practicing</button>
+            <span class="status error" id="practice-setup-err"></span>
+          </div>
+        </div>
+
+        <div id="practice-account" hidden>
+          <div class="tiles practice-tiles">
+            <div class="tile">
+              <div class="tile-label">Total value</div>
+              <div class="tile-value" id="practice-tile-total">–</div>
+              <div class="tile-delta muted" id="practice-tile-total-note"></div>
+            </div>
+            <div class="tile">
+              <div class="tile-label">Cash</div>
+              <div class="tile-value" id="practice-tile-cash">–</div>
+              <div class="tile-delta muted" id="practice-tile-cash-note"></div>
+            </div>
+            <div class="tile">
+              <div class="tile-label">Day P&amp;L</div>
+              <div class="tile-value" id="practice-tile-day">–</div>
+              <div class="tile-delta muted">vs yesterday's close</div>
+            </div>
+            <div class="tile">
+              <div class="tile-label">Total P&amp;L</div>
+              <div class="tile-value" id="practice-tile-pnl">–</div>
+              <div class="tile-delta muted" id="practice-tile-pnl-note"></div>
+            </div>
+          </div>
+
+          <div class="practice-add">
+            <input id="practice-add-input" type="text" autocomplete="off" spellcheck="false"
+                   placeholder="Add a stock: ticker or company name…" />
+            <button class="btn btn-primary" id="practice-add-btn" type="button">Add</button>
+            <button class="btn btn-secondary" id="practice-browse-btn" type="button">Browse all &#9662;</button>
+            <div class="search-results" id="practice-add-results" hidden></div>
+          </div>
+          <p class="status error" id="practice-add-err"></p>
+
+          <div class="practice-actions">
+            <button class="btn btn-secondary" id="practice-refresh-quotes" type="button">Refresh quotes</button>
+            <button class="btn btn-secondary" id="practice-refresh-signals" type="button">Refresh signals</button>
+            <span class="hint" id="practice-progress"></span>
+          </div>
+
+          <div class="table-wrap">
+            <table id="practice-table">
+              <thead>
+                <tr>
+                  <th>Symbol</th><th>Name</th><th>Price</th><th>Day %</th><th>Signal</th>
+                  <th>Strategy</th><th>Shares</th><th>Mkt value</th><th>P&amp;L</th><th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="table-wrap" id="practice-trades-wrap" hidden>
+            <h3>Trade history</h3>
+            <table id="practice-trades">
+              <thead>
+                <tr><th>When</th><th>Symbol</th><th>Side</th><th>Shares</th><th>Price</th><th>Value</th><th>Realized P&amp;L</th><th>Cash after</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Replay trainer pane ===== -->
+      <div id="practice-replay" role="tabpanel" hidden>
+        <div class="reco-card" id="replay-resume" hidden>
+          <h3>Resume your replay?</h3>
+          <p id="replay-resume-info"></p>
+          <div class="sim-actions">
+            <button class="btn btn-primary" id="replay-resume-go" type="button">Resume</button>
+            <button class="btn btn-secondary" id="replay-resume-discard" type="button">Discard run</button>
+          </div>
+          <p class="status error" id="replay-resume-err"></p>
+        </div>
+
+        <div id="replay-setup" hidden>
+          <p class="hint">Travel back in time and invest forward — you can't see the future. Pick a stock, a starting date, and your cash; the advisor strategy can be changed at any point mid-run.</p>
+          <div class="replay-form">
+            <div class="control">
+              <label for="replay-symbol">Ticker symbol</label>
+              <input id="replay-symbol" type="text" value="AAPL" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="control">
+              <label for="replay-date">Start date</label>
+              <input id="replay-date" type="date" />
+            </div>
+            <div class="control">
+              <label for="replay-cash">Starting cash ($)</label>
+              <input id="replay-cash" type="number" min="1" step="100" value="10000" />
+            </div>
+            <div class="control">
+              <label for="replay-strategy">Advisor strategy</label>
+              <select id="replay-strategy"></select>
+            </div>
+            <div class="control control-btn">
+              <button class="btn btn-primary" id="replay-begin" type="button">Begin replay</button>
+            </div>
+          </div>
+          <div class="chart-tools" id="replay-presets">
+            <span class="tools-label">Start:</span>
+            <button class="tool-btn" data-start="1y" type="button">1 year ago</button>
+            <button class="tool-btn" data-start="3y" type="button">3 years ago</button>
+            <button class="tool-btn" data-start="5y" type="button">5 years ago</button>
+            <button class="tool-btn" data-start="random" type="button">Surprise me</button>
+          </div>
+          <p class="status" id="replay-status"></p>
+        </div>
+
+        <div id="replay-run" hidden>
+          <div class="replay-header">
+            <span id="replay-title"></span>
+            <span class="replay-header-controls">
+              <label for="replay-strategy-live">Advisor:</label>
+              <select id="replay-strategy-live"></select>
+              <button class="btn btn-secondary" id="replay-abandon" type="button">Abandon run</button>
+            </span>
+          </div>
+
+          <div class="tiles practice-tiles" id="replay-tiles"></div>
+          <div class="reco-card" id="replay-advisor"></div>
+
+          <div class="replay-controls">
+            <span class="tools-label">Trade at today's close:</span>
+            <label>$ <input id="replay-buy-amt" type="number" min="0" step="100" /></label>
+            <span id="replay-buy-chips">
+              <button class="tool-btn" data-frac="0.25" type="button">25%</button>
+              <button class="tool-btn" data-frac="0.5" type="button">50%</button>
+              <button class="tool-btn" data-frac="1" type="button">Max</button>
+            </span>
+            <button class="btn btn-primary" id="replay-buy" type="button">Buy</button>
+            <button class="btn btn-secondary" id="replay-sell-half" type="button">Sell half</button>
+            <button class="btn btn-secondary" id="replay-sell-all" type="button">Sell all</button>
+          </div>
+          <p class="hint">Holding is a decision too — just press Next day without trading.</p>
+
+          <div class="replay-controls">
+            <button class="btn btn-primary" id="replay-next" type="button">Next day &rarr;</button>
+            <button class="btn btn-secondary" id="replay-skip" type="button">+5 days</button>
+            <button class="btn btn-secondary" id="replay-play" type="button">&#9654; Play</button>
+            <button class="btn btn-secondary" id="replay-finish" type="button">Finish now</button>
+          </div>
+
+          <div class="chart-tools" id="replay-range">
+            <span class="tools-label">Window:</span>
+            <button class="tool-btn" data-rrange="3M" type="button">3M</button>
+            <button class="tool-btn active" data-rrange="6M" type="button">6M</button>
+            <button class="tool-btn" data-rrange="1Y" type="button">1Y</button>
+            <button class="tool-btn" data-rrange="RUN" type="button">Whole run</button>
+            <label class="toggle"><input type="checkbox" id="replay-log" /> Log scale</label>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="replay-chart" height="320"></canvas>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="replay-equity" height="90"></canvas>
+          </div>
+
+          <div class="table-wrap" id="replay-trades-wrap" hidden>
+            <h3>Trades this run</h3>
+            <table id="replay-trades">
+              <thead>
+                <tr><th>Date</th><th>Side</th><th>Price</th><th>Shares</th><th>Value</th><th>P&amp;L</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="replay-result" hidden>
+          <div class="reco-card" id="replay-verdict"></div>
+          <div class="table-wrap">
+            <table id="replay-result-table">
+              <thead>
+                <tr><th>#</th><th>Who</th><th>Final value</th><th>Return</th><th>Max drawdown</th><th>Trades</th><th>Win rate</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="legend" id="replay-result-legend"></div>
+          <div class="chart-wrap">
+            <canvas id="replay-result-chart" height="280"></canvas>
+          </div>
+          <div class="sim-actions">
+            <button class="btn btn-primary" id="replay-save-json" type="button">Save run to file (JSON)</button>
+            <button class="btn btn-secondary" id="replay-again" type="button">Start a new run</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ Learn ============ -->
     <section class="panel" id="learn-section">
       <h2>Learn the strategies</h2>
@@ -220,10 +458,14 @@
     </div>
   </div>
 
-  <script src="js/indicators.js?v=7"></script>
-  <script src="js/data.js?v=7"></script>
-  <script src="js/strategies.js?v=7"></script>
-  <script src="js/chart.js?v=7"></script>
-  <script src="js/app.js?v=7"></script>
+  <script src="js/indicators.js?v=13"></script>
+  <script src="js/data.js?v=13"></script>
+  <script src="js/strategies.js?v=13"></script>
+  <script src="js/simulation.js?v=13"></script>
+  <script src="js/chart.js?v=13"></script>
+  <script src="js/practice.js?v=13"></script>
+  <script src="js/practice-ui.js?v=13"></script>
+  <script src="js/replay.js?v=13"></script>
+  <script src="js/app.js?v=13"></script>
 </body>
 </html>

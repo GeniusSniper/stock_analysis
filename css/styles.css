@@ -19,6 +19,15 @@
   --series-4: #4a3aa7;   /* violet — Bollinger */
   --diverge-neg: #e34948; /* red pole of blue<->red diverging (MACD histogram) */
 
+  /* Simulation agents — first six slots of the validated categorical
+     order (adjacent-pair CVD-safe); one fixed color per strategy. */
+  --sim-1: #2a78d6;   /* blue    — MA Crossover */
+  --sim-2: #eb6834;   /* orange  — RSI Reversion */
+  --sim-3: #1baf7a;   /* aqua    — MACD Momentum */
+  --sim-4: #eda100;   /* yellow  — Bollinger Reversion */
+  --sim-5: #e87ba4;   /* magenta — TS Momentum */
+  --sim-6: #008300;   /* green   — Buy & Hold */
+
   --status-good:     #0ca30c;
   --status-critical: #d03b3b;
   --delta-up:        #006300;
@@ -46,6 +55,13 @@
     --series-3: #c98500;
     --series-4: #9085e9;
     --diverge-neg: #e66767;
+
+    --sim-1: #3987e5;
+    --sim-2: #d95926;
+    --sim-3: #199e70;
+    --sim-4: #c98500;
+    --sim-5: #d55181;
+    --sim-6: #008300;
 
     --status-good:     #0ca30c;
     --status-critical: #d03b3b;
@@ -576,6 +592,161 @@ tr.recommended td { background: color-mix(in srgb, var(--accent) 8%, transparent
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+}
+
+.header-links { margin: 8px 0 0; font-size: 14px; }
+
+.sim-compare-row { cursor: pointer; }
+.sim-compare-row:hover td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+/* ============ Auto-researcher ============ */
+.auto-log {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+.auto-log .ok   { color: var(--delta-up); }
+.auto-log .fail { color: var(--delta-down); }
+.auto-log .note { color: var(--text-muted); }
+.auto-log .head { color: var(--text-primary); font-weight: 600; }
+.auto-log .signal-badge { font-size: 10.5px; padding: 1px 7px; }
+
+#auto-table tbody tr { cursor: pointer; }
+#auto-table tbody tr:hover td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+/* ============ Practice investing ============ */
+.up   { color: var(--delta-up); }
+.down { color: var(--delta-down); }
+
+#practice-tabs { margin-bottom: 14px; }
+
+.reconnect-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-1));
+}
+
+.practice-storage,
+.practice-actions,
+.replay-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+
+.practice-add {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 4px;
+}
+.practice-add input[type="text"],
+.practice-add input[type="number"] { min-width: 240px; }
+.practice-add .search-results { top: calc(100% + 4px); }
+
+.practice-tiles { margin: 12px 0; }
+
+.pr-asof {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.pr-name {
+  color: var(--text-secondary);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-row-actions { white-space: nowrap; }
+.pr-row-actions .btn { padding: 4px 10px; font-size: 12.5px; }
+.pr-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.pr-remove:hover { color: var(--status-critical); }
+
+.pr-flash { animation: pr-flash 1.2s ease-out; }
+@keyframes pr-flash {
+  0%, 40% { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  100% { background: transparent; }
+}
+
+.trade-row td { background: color-mix(in srgb, var(--accent) 5%, var(--surface-1)); }
+.trade-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 2px;
+}
+.trade-form input.trade-amt { width: 120px; }
+
+.replay-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.replay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 10px 0 4px;
+}
+.replay-header-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.replay-advisor-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ============ Strategy race simulation ============ */
+.sim-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+#sim-point-note { min-height: 1.4em; }
+
+.sim-swatch {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  margin: 0 5px 0 10px;
+  vertical-align: baseline;
 }
 
 .app-footer {

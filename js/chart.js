@@ -420,5 +420,5 @@ const StockCharts = (() => {
     return api;
   }
 
-  return { createChart, cssVar, setView, resetView, onSelect, setSelection };
+  return { createChart, cssVar, niceTicks, setView, resetView, onSelect, setSelection };
 })();

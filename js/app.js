@@ -331,6 +331,9 @@
       renderDataTable();
       renderRecommendation();
       showLatestDetails();
+      // The practice section reuses this history — best-effort: a broken or
+      // missing practice.js must never derail the core load.
+      try { if (typeof Practice !== 'undefined') Practice.notifyDataLoaded({ source, symbol, bars, ind }); } catch (e) { /* optional */ }
       // If TradingView's panel resolved before this history did, its
       // suggestion was built without our engine — rebuild it now.
       if (lastTvSymbol === symbol && lastTv) {
@@ -393,6 +396,7 @@
       renderTiles();
       renderDataTable();
       renderRecommendation();
+      try { if (typeof Practice !== 'undefined') Practice.notifyDataLoaded({ source, symbol, bars, ind }); } catch (e) { /* optional */ }
       if (lastTvSymbol === symbol && lastTv) {
         $('tva-suggestion').innerHTML = tvSuggestionHTML(lastTv, symbol);
       }
@@ -890,6 +894,7 @@
     $('modal-backdrop').hidden = true;
     document.body.style.overflow = '';
   }
+  window.openStrategyLesson = openLesson;   // the practice section links into the same lessons
   $('modal-close').addEventListener('click', closeModal);
   $('modal-backdrop').addEventListener('click', e => { if (e.target === $('modal-backdrop')) closeModal(); });
   document.addEventListener('keydown', e => {

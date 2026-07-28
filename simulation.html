@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strategy Race Simulator — Stock Analysis &amp; Strategy Lab</title>
+  <!-- ?v= busts stale browser caches — bump it when shipping changes -->
+  <link rel="stylesheet" href="css/styles.css?v=13" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <h1>Strategy Race Simulator</h1>
+      <p class="subtitle">Every strategy runs as an independent agent with <b>$1,000</b> from the first day of a stock's history — pick any of ~20,000 stocks below and watch the race.</p>
+      <p class="header-links"><a href="index.html">&larr; Back to analysis, practice &amp; lessons</a></p>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- ============ Auto-researcher ============ -->
+    <section class="panel" id="auto-panel" aria-label="Auto researcher">
+      <h2>Auto-researcher — it picks the stocks</h2>
+      <p class="hint">
+        Press Start and the app works on its own: it screens the <b>entire US universe</b>
+        (~20,000 stocks) in one sweep, then grinds down the ranked candidate list — for each stock
+        it loads ~10 years of history, detects the market regime, backtests all six strategies,
+        and reaches a BUY / WATCH / SKIP verdict. It <b>automatically manages the practice
+        portfolio</b> with virtual money — 60% in up to 3 <b>long-term holds</b>, 20% in up to 2
+        <b>short-term trades</b> (fast mean-reversion setups, sold when their signal turns), and a
+        20% cash reserve — selling whatever drops out of its lists. It researches forever until
+        you press Stop, and explains every decision below. Deep research is
+        deliberately slow (~2–60&nbsp;s per stock — public data feeds). Virtual money, education
+        only — not financial advice.
+      </p>
+      <div class="controls-row">
+        <div class="control">
+          <label for="auto-capital">Starting virtual cash ($)</label>
+          <input id="auto-capital" type="number" value="10000" min="100" step="100" />
+        </div>
+        <div class="control">
+          <label for="auto-mincap">Company size floor</label>
+          <select id="auto-mincap">
+            <option value="300000000">Over $300M (small caps and up)</option>
+            <option value="2000000000" selected>Over $2B (mid caps and up)</option>
+            <option value="10000000000">Over $10B (large caps only)</option>
+          </select>
+        </div>
+        <div class="control control-btn">
+          <button id="auto-start" class="btn btn-primary" type="button">Start researching</button>
+        </div>
+      </div>
+      <p class="status" id="auto-status" role="status"></p>
+      <div class="tiles" id="auto-portfolio" hidden></div>
+      <div id="auto-brief" hidden>
+        <div class="reco-card" id="auto-summary"></div>
+        <div class="table-wrap" id="auto-holdings-wrap" hidden>
+          <h3>What it holds right now</h3>
+          <table id="auto-holdings">
+            <thead>
+              <tr>
+                <th>Holding</th>
+                <th>Plan</th>
+                <th>Strategy</th>
+                <th>Invested</th>
+                <th>Now worth</th>
+                <th>Return</th>
+                <th>Held since</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="auto-log" id="auto-log" hidden></div>
+      <div id="auto-results" hidden>
+        <div class="reco-card" id="auto-reco"></div>
+        <p class="hint" id="auto-table-note"></p>
+        <div class="table-wrap">
+          <table id="auto-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Stock</th>
+                <th>Verdict</th>
+                <th>Score</th>
+                <th>TV rating</th>
+                <th>Best strategy</th>
+                <th>Signal</th>
+                <th>Strategy vs B&amp;H</th>
+                <th>Regime / reason</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="sim-actions">
+          <button id="auto-save" class="btn btn-primary" type="button">Save research report (JSON)</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Pick a stock ============ -->
+    <section class="panel" aria-label="Simulation controls">
+      <div class="controls-row">
+        <div class="control">
+          <label for="symbol-input">Ticker symbol</label>
+          <input id="symbol-input" type="text" value="AAPL" autocomplete="off" spellcheck="false" placeholder="e.g. AAPL, MSFT, SP500" />
+        </div>
+        <div class="control control-btn">
+          <button id="sim-load-btn" class="btn btn-primary" type="button">Load &amp; simulate</button>
+        </div>
+      </div>
+      <p class="hint">
+        Rules of the race: each agent goes all-in when its strategy says buy (fractional shares,
+        filled at the next day's open) and fully to cash when it says sell. No commissions,
+        slippage, taxes, or dividends. A fast ~10-year window simulates first; the complete
+        available history backfills in the background. Educational — not financial advice.
+      </p>
+      <p class="status" id="sim-status" role="status"></p>
+    </section>
+
+    <!-- ============ The race ============ -->
+    <section class="panel" id="sim-section" hidden>
+      <h2 id="sim-title">Strategy race</h2>
+      <div class="chart-toggles" role="group" aria-label="Simulation chart options">
+        <label class="toggle"><input type="checkbox" id="sim-log" /> Log scale</label>
+      </div>
+      <div class="legend" id="sim-legend"></div>
+      <div class="chart-wrap">
+        <canvas id="sim-chart" height="320"></canvas>
+      </div>
+      <p class="hint" id="sim-point-note"></p>
+      <div class="table-wrap">
+        <table id="sim-table">
+          <caption id="sim-caption"></caption>
+          <thead>
+            <tr>
+              <th>Agent (strategy)</th>
+              <th>Final value</th>
+              <th>Total return</th>
+              <th>Growth / year</th>
+              <th>Max drawdown</th>
+              <th>Trades</th>
+              <th>Win rate</th>
+              <th>Right now</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="sim-actions">
+        <button id="sim-save-json" class="btn btn-primary" type="button">Save results to file (JSON)</button>
+        <button id="sim-save-csv" class="btn btn-secondary" type="button">Save equity curves (CSV)</button>
+      </div>
+      <p class="hint">The JSON file holds the leaderboard, every agent's stats, and its full trade log; the CSV holds the day-by-day portfolio value of every agent — ready for a spreadsheet.</p>
+
+      <div class="table-wrap" id="sim-compare-wrap" hidden>
+        <h3>Stocks you've raced this session</h3>
+        <table id="sim-compare">
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Period</th>
+              <th>Days</th>
+              <th>Race winner</th>
+              <th>Winner's $1,000 became</th>
+              <th>Buy &amp; Hold's $1,000</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="hint">Click any row to jump back to that stock's race.</p>
+      </div>
+    </section>
+
+    <!-- ============ All stocks ============ -->
+    <section class="panel" aria-label="All stocks">
+      <h2>All stocks — click one to simulate it</h2>
+      <p class="hint">Every US-listed stock, ETF, and fund on TradingView, biggest first, with live prices. Filter by ticker or company name. Friendly index names work too (<b>SP500</b>, <b>DOW</b>, <b>NASDAQ</b>…).</p>
+      <div class="dir-controls">
+        <input id="sim-dir-filter" type="text" placeholder="Filter: ticker or company name…" autocomplete="off" />
+        <span class="hint" id="sim-dir-count"></span>
+      </div>
+      <div class="dir-list" id="sim-dir-list"></div>
+      <button class="btn btn-primary" id="sim-dir-more" type="button">Load more</button>
+    </section>
+
+    <footer class="app-footer">
+      <p>Educational project — not financial advice. <a href="index.html">Back to the main app</a></p>
+    </footer>
+  </main>
+
+  <script src="js/indicators.js?v=13"></script>
+  <script src="js/data.js?v=13"></script>
+  <script src="js/strategies.js?v=13"></script>
+  <script src="js/simulation.js?v=13"></script>
+  <script src="js/practice.js?v=13"></script>
+  <script src="js/chart.js?v=13"></script>
+  <script src="js/sim-page.js?v=13"></script>
+  <script src="js/auto-research.js?v=13"></script>
+</body>
+</html>

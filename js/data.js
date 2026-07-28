@@ -272,6 +272,76 @@ const DataSource = (() => {
     };
   }
 
+  /**
+   * General screener over TradingView's whole US universe — ONE request
+   * returns any columns for any filter/sort/range. Rows are keyed BY
+   * COLUMN NAME (plus ticker), not positionally, because callers ask for
+   * many columns. Filter ops: greater/egreater/less/eless/equal/nequal/
+   * in_range/match/nempty.
+   */
+  async function screenStocks({ filters = [], columns = [], sortBy, sortOrder = 'desc', offset = 0, limit = 50 } = {}) {
+    const body = {
+      columns,
+      range: [offset, offset + limit],
+    };
+    if (filters.length) body.filter = filters;
+    if (sortBy) body.sort = { sortBy, sortOrder };
+    const res = await scannerPost(JSON.stringify(body));
+    if (!res.ok) throw new Error('TradingView scanner: HTTP ' + res.status);
+    const json = await res.json();
+    return {
+      total: json.totalCount || 0,
+      rows: (json.data || []).map(r => {
+        const out = { ticker: r.s };
+        columns.forEach((c, i) => { out[c] = r.d[i]; });
+        return out;
+      }),
+    };
+  }
+
+  /**
+   * Live quotes for MANY symbols in one scanner request.
+   * `tickers` are exchange-qualified ("NASDAQ:AAPL") — resolve them once
+   * with resolveTicker()/browseSymbols() and store the result; the scanner
+   * silently drops tickers it doesn't know, so a missing key in the
+   * returned map means "no quote", not an error.
+   * Returns { [ticker]: { ticker, symbol, name, close, change } }.
+   */
+  async function fetchQuotes(tickers) {
+    if (!tickers || !tickers.length) return {};
+    const body = JSON.stringify({
+      symbols: { tickers, query: { types: [] } },
+      columns: ['name', 'description', 'close', 'change'],
+    });
+    const res = await scannerPost(body);
+    if (!res.ok) throw new Error('TradingView scanner: HTTP ' + res.status);
+    const json = await res.json();
+    const out = {};
+    for (const r of json.data || []) {
+      out[r.s] = { ticker: r.s, symbol: r.d[0], name: r.d[1], close: r.d[2], change: r.d[3] };
+    }
+    return out;
+  }
+
+  /**
+   * Resolve a plain symbol ("AAPL", "^GSPC") to its exchange-qualified
+   * TradingView ticker. Returns { ticker, symbol, name, close, change }
+   * or null when TradingView doesn't know the symbol (never throws on
+   * "not found" — only on network/HTTP failures).
+   */
+  async function resolveTicker(symbol) {
+    const body = JSON.stringify({
+      symbols: { tickers: tvCandidates(symbol), query: { types: [] } },
+      columns: ['name', 'description', 'close', 'change'],
+    });
+    const res = await scannerPost(body);
+    if (!res.ok) throw new Error('TradingView scanner: HTTP ' + res.status);
+    const json = await res.json();
+    const r = json.data && json.data[0];
+    if (!r) return null;
+    return { ticker: r.s, symbol: r.d[0], name: r.d[1], close: r.d[2], change: r.d[3] };
+  }
+
   /* ----------------------------------------------------------
      Alpha Vantage (free tier: 25 requests/day).
      ---------------------------------------------------------- */
@@ -363,5 +433,5 @@ const DataSource = (() => {
     return fetchYahooDailyFull(symbol);
   }
 
-  return { load, loadFullHistory, loadHourly, searchSymbols, fetchTradingViewAnalysis, browseSymbols, normalizeSymbol };
+  return { load, loadFullHistory, loadHourly, searchSymbols, fetchTradingViewAnalysis, browseSymbols, screenStocks, normalizeSymbol, fetchQuotes, resolveTicker };
 })();

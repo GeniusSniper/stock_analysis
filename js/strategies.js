@@ -510,5 +510,5 @@ const Strategies = (() => {
     };
   }
 
-  return { catalog, shortTermCatalog, analyze, backtest, positionPlan };
+  return { catalog, shortTermCatalog, analyze, backtest, positionPlan, currentSignal };
 })();
