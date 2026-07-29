@@ -73,15 +73,20 @@ on open — an internet connection is required.
   the amount.
 - **Auto-trader (on `simulation.html`)** — a robot that lives through the
   market on its own, under strict rules:
-  - **Born five years in the past with $1,000** of virtual money, in a
-    ~24-stock world that is a **merit mix, not just the biggest**: four
-    screens — largest, strongest 3-month movers, best-rated technicals,
-    most traded — deduped, within the size band you choose (large / mid /
-    small / micro caps, or all sizes). It lives forward **one market day
-    at a time** and **can never look ahead**: every decision uses only
-    prices up to its simulated day, all indicators are trailing, fills
-    happen at that day's close, and it may only act on its strategies'
-    signals — never on known outcomes.
+  - **Born five years in the past with $1,000** of virtual money. It
+    **gathers the entire stock listing**: a merit-mix seed first (largest
+    + strongest 3-month movers + best-rated technicals + most traded),
+    then it studies stock after stock from the whole screener — each
+    history fetched, vetted, and **remembered forever**, so its pool
+    grows run after run toward every listed stock (histories load one at
+    a time through the proxy chain, so "all" is a journey, not one
+    click). Each session it actively trades the most promising ~60
+    (holdings always included; the size dropdown focuses what it studies
+    next). It lives forward **one market day at a time** and **can never
+    look ahead**: every decision uses only prices up to its simulated
+    day, all indicators are trailing, fills happen at that day's close,
+    and it may only act on its strategies' signals — never on known
+    outcomes.
   - **It carries a monthly goal** (default **$2,000/month**, editable):
     every simulated month is scored against it. A missed month makes it
     trade **hungrier** the next — lower entry bar, bigger positions,

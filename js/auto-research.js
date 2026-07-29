@@ -29,7 +29,10 @@ const AutoResearch = (() => {
 
   const LS_KEY = 'stockLab.autoResearch.v1';
   const STATE_V = 2;                 // v1 was the old current-day researcher — discarded
-  const UNIVERSE_SIZE = 24;
+  const SESSION_ACTIVE = 60;         // histories loaded per session (holdings always included)
+  const EXPLORE_SLOTS = 15;          // of those, a rotating slice for gathered newcomers
+  const GATHER_PAGE = 50;            // screener page size while gathering the full listing
+  const GATHER_MIN_BARS = 300;       // a gathered stock needs this much history to join the pool
   const DEFAULT_GOAL = 2000;         // $ it must try to earn each simulated month
   const YEARS_BACK = 5;
   const UNLOCK_MULT = 10;            // $1,000 must become $10,000 to unlock long-term
@@ -60,7 +63,7 @@ const AutoResearch = (() => {
   // life; the min/max are market-cap bounds, vol is a liquidity floor that
   // relaxes for smaller companies (junk-data guard, not a shortlist).
   const WORLDS = {
-    all:   { label: 'all sizes ($300M and up)',   min: 3e8,  max: null, vol: 300000 },
+    all:   { label: 'every listed stock (above $5 and liquid — a data-quality floor)', min: 0, max: null, vol: 100000 },
     large: { label: 'large caps (over $10B)',     min: 1e10, max: null, vol: 500000 },
     mid:   { label: 'mid caps ($2B–$10B)',        min: 2e9,  max: 1e10, vol: 500000 },
     small: { label: 'small caps ($300M–$2B)',     min: 3e8,  max: 2e9,  vol: 300000 },
@@ -93,8 +96,13 @@ const AutoResearch = (() => {
   let state = {
     v: STATE_V,
     params: { world: 'all' },
-    universe: [],        // [{symbol, ticker, name, cap}] — the robot's world, chosen once
-    universeWorld: null, // which WORLDS band the universe was built from (birth fact)
+    universe: [],        // this SESSION's active stocks [{symbol, ticker, name, cap, via}]
+    universeWorld: null, // which WORLDS band it gathers within
+    studied: {},         // EVERY stock it has ever studied: sym -> {t, n, cap, ok, via}
+                         // ok: 1 usable history · 0 unusable · null not vetted yet.
+                         // Grows forever, run after run, toward the whole listing.
+    gatherOffset: 0,     // how far through the full screener listing it has gathered
+    exploreCursor: 0,    // rotates gathered stocks through the session's explorer slots
     robo: null,          // the persistent run — see freshRobo()
     news: null,          // last present-day news check — {checkedAt, bySymbol}
     diary: [],
@@ -151,6 +159,15 @@ const AutoResearch = (() => {
         state.params.world = mc >= 1e10 ? 'large' : mc >= 2e9 ? 'mid' : mc > 0 ? 'small' : 'all';
       }
       if (!WORLDS[state.universeWorld] && state.universe.length) state.universeWorld = state.params.world;
+      if (!state.studied || typeof state.studied !== 'object' || Array.isArray(state.studied)) {
+        // Saves from the fixed-world era: fold the old universe into studied.
+        state.studied = {};
+        for (const u of state.universe || []) {
+          state.studied[u.symbol] = { t: u.ticker, n: u.name, cap: u.cap, ok: 1, via: u.via || 'its old world' };
+        }
+      }
+      if (!(state.gatherOffset >= 0)) state.gatherOffset = 0;
+      if (!(state.exploreCursor >= 0)) state.exploreCursor = 0;
       if (state.robo) {
         // Saves from before options / the monthly goal get safe defaults.
         if (!Array.isArray(state.robo.options)) state.robo.options = [];
@@ -269,13 +286,14 @@ const AutoResearch = (() => {
     return page.rows;
   }
 
-  async function buildUniverse(myRun) {
+  // First contact with the market: a merit mix (biggest, strongest movers,
+  // best-rated, most traded) seeds its studied pool so a brand-new life has
+  // promising stocks on day one. After that, gatherMore() keeps studying
+  // the ENTIRE listing, run after run — the pool grows without limit.
+  async function seedStudied(myRun) {
     const worldKey = WORLDS[state.params.world] ? state.params.world : 'all';
     const band = WORLDS[worldKey];
-    setStatus('Choosing the robot\'s world — a merit mix, ' + band.label + '…');
-    // All-or-nothing: a world silently missing one of its merit screens
-    // would be persisted for the whole life mislabeled — better to fail the
-    // run and let a retry rebuild it (universe stays empty until then).
+    setStatus('First contact: screening a merit mix to study first (' + band.label + ')…');
     const rows = [];
     try {
       for (const screen of MERIT_SCREENS) {
@@ -285,24 +303,62 @@ const AutoResearch = (() => {
       }
     } catch (e) {
       if (myRun === runToken) {
-        setStatus('The stock screener is unreachable (' + e.message + ') — its world was not chosen. Try again in a moment.', true);
+        setStatus('The stock screener is unreachable (' + e.message + ') — try again in a moment.', true);
       }
       return false;
     }
     if (myRun !== runToken) return false;   // stopped during the final pacing sleep
-    const seen = new Set();
-    state.universe = rows
-      .filter(x => x.r.name && !seen.has(x.r.name) && seen.add(x.r.name))
-      .slice(0, UNIVERSE_SIZE)
-      .map(x => ({ symbol: x.r.name, ticker: x.r.ticker, name: x.r.description || x.r.name, cap: x.r.market_cap_basic, via: x.via }));
-    if (!state.universe.length) {
-      setStatus('The stock screener returned nothing — try again in a moment or pick a different world.', true);
+    let added = 0;
+    for (const x of rows) {
+      if (!x.r.name || state.studied[x.r.name]) continue;
+      state.studied[x.r.name] = { t: x.r.ticker, n: x.r.description || x.r.name, cap: x.r.market_cap_basic, ok: null, via: x.via };
+      added++;
+    }
+    if (!added && !Object.keys(state.studied).length) {
+      setStatus('The stock screener returned nothing — try again in a moment.', true);
       return false;
     }
-    state.universeWorld = worldKey;   // the world it was BORN into — labels use this, not the select
-    diary('<span class="head">World chosen: ' + state.universe.length + ' stocks — a merit mix (the biggest, the strongest recent movers, the best-rated, the most traded), ' +
-      fmt.esc(band.label) + ' — NOT just the largest by size. Honest caveat: today\'s stock list is the one thing it knows from the present — every trading decision inside the game uses only past prices.</span>', 'head');
+    state.universeWorld = worldKey;
+    diary('<span class="head">First stocks to study: ' + added + ' from a merit mix (the biggest, the strongest recent movers, the best-rated, the most traded) — and from here it keeps gathering the WHOLE listing, run after run. ' +
+      'Honest caveat: today\'s stock list is the one thing it knows from the present — every trading decision inside the game uses only past prices.</span>', 'head');
     return true;
+  }
+
+  // Stocks with too little history for THIS life's birthdate — a fact about
+  // this life, not about the stock, so it must never poison the permanent
+  // studied pool. Session-only; a new life or reload retries them.
+  const lifeSkipped = new Set();
+
+  // Which studied stocks get their histories loaded this session. STRICT
+  // tiers (magnitudes far apart so no tier can leak into another): holdings
+  // → proven winners → unknowns by size → proven losers. On top, a rotating
+  // slice of explorer slots cycles through everything else it has gathered,
+  // so every studied stock genuinely gets sessions in the sun.
+  function pickActives() {
+    const held = new Set([
+      ...state.robo.positions.map(p => p.symbol),
+      ...state.robo.options.map(o => o.symbol),
+    ]);
+    const stats = state.robo.stats.perStock;
+    const score = r => {
+      if (held.has(r.symbol)) return 1e18;
+      const pnl = (stats[r.symbol] || { pnl: 0 }).pnl || 0;
+      if (pnl > 0) return 1e15 + Math.min(pnl, 1e8);
+      if (pnl < 0) return -1e15 + (r.cap || 0);
+      return r.cap || 0;
+    };
+    const pool = Object.entries(state.studied)
+      .map(([symbol, s]) => ({ symbol, ticker: s.t, name: s.n, cap: s.cap, ok: s.ok, via: s.via }))
+      .filter(r => r.ok !== 0 && !lifeSkipped.has(r.symbol))
+      .sort((a, b) => score(b) - score(a));
+    const base = pool.slice(0, Math.max(0, SESSION_ACTIVE - EXPLORE_SLOTS));
+    const rest = pool.slice(Math.max(0, SESSION_ACTIVE - EXPLORE_SLOTS));
+    if (rest.length) {
+      const at = (state.exploreCursor || 0) % rest.length;
+      for (let k = 0; k < Math.min(EXPLORE_SLOTS, rest.length); k++) base.push(rest[(at + k) % rest.length]);
+      state.exploreCursor = (at + EXPLORE_SLOTS) % rest.length;
+    }
+    return base;
   }
 
   async function loadWorld(myRun) {
@@ -310,11 +366,12 @@ const AutoResearch = (() => {
     world.clear();
     auditionCache.clear();   // cached entries embed bars up to their compute
                              // index — a new life must never inherit them
+    const actives = pickActives();
     let kept = 0;
-    for (let i = 0; i < state.universe.length; i++) {
+    for (let i = 0; i < actives.length; i++) {
       if (myRun !== runToken) return false;
-      const u = state.universe[i];
-      setStatus('Loading history ' + (i + 1) + ' of ' + state.universe.length + ' — ' + u.symbol + '…');
+      const u = actives[i];
+      setStatus('Loading history ' + (i + 1) + ' of ' + actives.length + ' — ' + u.symbol + '…');
       try {
         let bars;
         const cached = window.SimPageBridge && SimPageBridge.barsCache.get(u.symbol);
@@ -327,8 +384,14 @@ const AutoResearch = (() => {
         }
         const startIdx = bars.findIndex(b => b.date >= startDate);
         if (startIdx < WARMUP_BARS) {
-          diary(fmt.esc(u.symbol) + ' — not enough history before ' + fmt.esc(startDate) + ', left out of the world.', 'note');
+          // Life-relative fact: skip it for THIS life only. Only a globally
+          // tiny history (a world fact) demotes it in the permanent pool.
+          lifeSkipped.add(u.symbol);
+          if (state.studied[u.symbol]) state.studied[u.symbol].ok = bars.length >= GATHER_MIN_BARS ? 1 : 0;
+          diary(fmt.esc(u.symbol) + ' — not enough history before ' + fmt.esc(startDate) +
+            (bars.length >= GATHER_MIN_BARS ? ' — skipped for this life, kept in the pool for future ones.' : ' and too little history overall — dropped from the pool.'), 'note');
         } else {
+          if (state.studied[u.symbol]) state.studied[u.symbol].ok = 1;
           const ind = Indicators.computeAll(bars);
           const posByStrat = {};
           for (const id of [...SHORT_STRATS, ...LONG_STRATS]) {
@@ -341,12 +404,90 @@ const AutoResearch = (() => {
           kept++;
         }
       } catch (e) {
+        // Transient feed failure — the stock stays unvetted and is retried.
         diary(fmt.esc(u.symbol) + ' — feed unavailable (' + fmt.esc(e.message) + '), left out this run.', 'fail');
       }
       await new Promise(r => setTimeout(r, GAP_MS()));
     }
-    diary('World loaded: ' + kept + ' stocks with full 5-year+ history.', 'note');
+    if (myRun !== runToken) return false;
+    state.universe = actives
+      .filter(u => world.has(u.symbol))
+      .map(u => ({ symbol: u.symbol, ticker: u.ticker, name: u.name, cap: u.cap, via: u.via }));
+    diary('Active this session: ' + kept + ' stocks with usable history (of ' +
+      Object.keys(state.studied).length + ' studied so far — the gathering continues every run).', 'note');
     return kept >= 3;
+  }
+
+  // The endless gathering: page through the ENTIRE listing, studying every
+  // stock it has not met yet — fetch its history, vet it, remember it
+  // forever. Runs after the life is caught up, until Stop or the listing
+  // is exhausted. Every stock studied here is tradeable from the next
+  // simulated day on — never retroactively, so no lookahead.
+  async function gatherMore(myRun) {
+    const band = WORLDS[state.universeWorld] || WORLDS.all;
+    const total = () => Object.keys(state.studied).length;
+    const usable = () => Object.values(state.studied).filter(s => s.ok === 1).length;
+    diary('<span class="head">Gathering more of the listing — it studies stock after stock (each one remembered forever) until you press Stop.</span>', 'head');
+    let fails = 0, sincePersist = 0;
+    while (myRun === runToken) {
+      let page;
+      try {
+        page = await DataSource.screenStocks({
+          filters: [
+            { left: 'market_cap_basic', operation: 'egreater', right: band.min },
+            { left: 'close', operation: 'greater', right: 5 },
+            { left: 'volume', operation: 'greater', right: band.vol },
+          ].concat(band.max ? [{ left: 'market_cap_basic', operation: 'less', right: band.max }] : []),
+          columns: ['name', 'description', 'close', 'market_cap_basic'],
+          sortBy: 'market_cap_basic', sortOrder: 'desc',
+          offset: state.gatherOffset, limit: GATHER_PAGE,
+        });
+      } catch (e) {
+        if (myRun === runToken) diary('The screener paused (' + fmt.esc(e.message) + ') — it will gather more next run.', 'note');
+        return;
+      }
+      if (myRun !== runToken) return;
+      if (!page.rows.length) {
+        // The listing shifts daily (caps reorder, IPOs arrive) and lone
+        // fetch failures can leave gaps — reset the cursor so the next run
+        // re-sweeps from the top. Already-studied stocks are skipped, so a
+        // re-sweep costs pages, not history fetches.
+        diary('It has swept the whole listing for its focus — ' + total() + ' studied, ' + usable() +
+          ' usable. Next run it re-sweeps from the top to catch new listings and anything missed.', 'head');
+        state.gatherOffset = 0;
+        persist();
+        return;
+      }
+      for (const r of page.rows) {
+        if (myRun !== runToken) return;
+        if (!r.name || state.studied[r.name]) continue;
+        setStatus('Studying ' + r.name + ' (' + total() + ' studied, ' + usable() + ' usable so far)…');
+        const entry = { t: r.ticker, n: r.description || r.name, cap: r.market_cap_basic, ok: null, via: 'the full listing' };
+        state.studied[r.name] = entry;
+        try {
+          const bars = await DataSource.load('yahoo', r.name, '');
+          if (myRun !== runToken) return;
+          if (window.SimPageBridge) SimPageBridge.barsCache.set(r.name, { bars, full: false, fetchedAt: Date.now() });
+          entry.ok = bars.length >= GATHER_MIN_BARS ? 1 : 0;
+          diary('Studied ' + fmt.esc(r.name) + ' — ' + (entry.ok ? 'usable history, joins its pool (' + usable() + ' usable).' : 'not enough history to trade.'), entry.ok ? 'ok' : 'note');
+          fails = 0;
+        } catch (e) {
+          if (myRun !== runToken) return;
+          // Keep the entry unvetted (ok null): the explorer rotation and
+          // future re-sweeps retry it — deleting it here would lose the
+          // stock forever once the page cursor moves on.
+          if (++fails >= 5) {
+            diary('The data feed looks tired (5 stocks in a row failed) — it will keep gathering next run. ' + total() + ' studied so far.', 'note');
+            return;
+          }
+        }
+        if (++sincePersist >= 10) { sincePersist = 0; persist(); renderStocks(); }
+        await new Promise(r => setTimeout(r, GAP_MS()));
+      }
+      state.gatherOffset += GATHER_PAGE;
+      persist();
+      await new Promise(r => setTimeout(r, GAP_MS()));   // pace page requests too
+    }
   }
 
   function masterDates() {
@@ -710,6 +851,7 @@ const AutoResearch = (() => {
       const goalWanted = Math.max(100, parseFloat($('auto-goal') && $('auto-goal').value) || DEFAULT_GOAL);
       if (!state.robo) {
         state.robo = freshRobo(wanted, goalWanted);
+        lifeSkipped.clear();
         diary('<span class="head">New life started: ' + fmt.money(wanted) + ' on ' + fmt.esc(state.robo.config.startDate) +
           ' (five years ago). Rule: short-term trading only until it reaches ' + fmt.money(state.robo.config.unlockAt) +
           ' — that unlocks long-term investing. It cannot see a single day ahead, and it reads real news only once it ' +
@@ -720,8 +862,10 @@ const AutoResearch = (() => {
           'Start a NEW life from ' + fmt.money(wanted) + ' five years back? This erases its memory, trades, and learning.\n' +
           'OK = new life   ·   Cancel = continue the current one')) {
           state.robo = freshRobo(wanted, goalWanted);
-          state.universe = [];      // a new life is born into a freshly chosen world
-          state.news = null;
+          lifeSkipped.clear();
+          state.universe = [];      // session actives re-picked; its studied
+          state.news = null;        // knowledge of the listing is kept — facts
+                                    // about stocks, not memories of this life
           state.diary = [];
           $('auto-log').innerHTML = '';
           diary('<span class="head">New life started: ' + fmt.money(wanted) + ' on ' + fmt.esc(state.robo.config.startDate) + '.</span>', 'head');
@@ -739,25 +883,22 @@ const AutoResearch = (() => {
       const worldKey = WORLDS[$('auto-mincap').value] ? $('auto-mincap').value : 'all';
       if (worldKey !== state.params.world) {
         state.params.world = worldKey;
-        if (state.universe.length) {
-          diary('World change noted (' + fmt.esc(WORLDS[worldKey].label) +
-            ') — it applies when a NEW life starts; this life keeps the world it was born into.', 'note');
-        }
+        state.universeWorld = worldKey;
+        state.gatherOffset = 0;   // a new focus is a different listing — page it from the top
+        diary('Gathering focus set to ' + fmt.esc(WORLDS[worldKey].label) +
+          ' — it applies to every stock it studies from now on (what it already studied stays remembered).', 'note');
       }
 
-      if (!state.universe.length) {
-        const ok = await buildUniverse(myRun);
+      if (!Object.keys(state.studied).length) {
+        const ok = await seedStudied(myRun);
         if (!ok || myRun !== runToken) return;
       }
       const worldOk = await loadWorld(myRun);
       if (myRun !== runToken) return;
       if (!worldOk) {
-        // A life that never traded isn't bound to this universe yet — let a
-        // retry choose the world again instead of dead-ending forever.
-        if (!state.robo.cursorDate && !state.robo.journal.length && !state.robo.positions.length) {
-          state.universe = [];
-          state.universeWorld = null;
-        }
+        // Re-pick actives on the next try. The studied pool is NEVER wiped
+        // here — it may hold thousands of gathered stocks from other lives.
+        state.universe = [];
         setStatus('Not enough stock histories loaded — the data feed looks down. Try again later.', true);
         return;
       }
@@ -812,8 +953,11 @@ const AutoResearch = (() => {
         if (myRun !== runToken) return;
         await writeDataFiles();
         if (myRun !== runToken) return;
+        await gatherMore(myRun);
+        if (myRun !== runToken) return;
+        persist();
         setStatus('Caught up to ' + (state.robo.cursorDate || 'today') + ' — account ' + fmt.money(eq) +
-          '. Press Start after the next market day to continue.');
+          '. It has studied ' + Object.keys(state.studied).length + ' stocks so far. Press Start after the next market day to continue.');
       }
     } catch (e) {
       if (myRun === runToken) {
@@ -1180,9 +1324,11 @@ const AutoResearch = (() => {
     const robo = state.robo;
     $('auto-results').hidden = !robo;
     if (!robo) return;
-    $('auto-table-note').textContent = 'Its world: ' + state.universe.length +
-      ' stocks chosen at birth (' + (WORLDS[state.universeWorld] ? WORLDS[state.universeWorld].label : 'from an earlier save') +
-      '). Click a row to race that stock below.';
+    const studiedAll = Object.values(state.studied || {});
+    $('auto-table-note').textContent = 'It has studied ' + studiedAll.length + ' stocks so far (' +
+      studiedAll.filter(s => s.ok === 1).length + ' usable) and keeps gathering the whole listing every run — focus: ' +
+      (WORLDS[state.universeWorld] ? WORLDS[state.universeWorld].label : 'from an earlier save') +
+      '. Active this session: ' + state.universe.length + ' (holdings always included). Click a row to race that stock below.';
     const heldBy = new Map(robo.positions.map(p => [p.symbol, p]));
     const optBy = new Map(robo.options.map(o => [o.symbol, o]));
     $('auto-table').querySelector('tbody').innerHTML = state.universe.map(u => {
@@ -1395,12 +1541,13 @@ const AutoResearch = (() => {
         'Decisions come ONLY from strategy signals on trailing data; fills at that day\'s close; ' + Math.round(CASH_RESERVE * 100) + '% cash reserve at all times.',
         'It learns: per-strategy weights follow its own win rates (0.60–1.40), and every buy signal is auditioned against just holding on that stock\'s trailing year first.',
         'Goal: earn at least ' + fmt.money(robo.config.monthlyGoal || DEFAULT_GOAL) + ' per simulated month. A missed month makes it trade hungrier the next (lower entry bar, bigger positions, more option budget — hard caps still apply); a met month calms it down.',
-        'Universe: a merit mix, NOT just the biggest — four screens (largest, strongest 3-month movers, best-rated technicals, most traded), deduped.',
+        'Universe: it gathers the ENTIRE listing over time — a merit-mix seed (largest, strongest movers, best-rated, most traded), then stock after stock from the full screener, every one remembered forever. It has studied ' +
+        Object.keys(state.studied).length + ' so far (' + Object.values(state.studied).filter(s => s.ok === 1).length +
+        ' usable); each session it actively trades the most promising ' + SESSION_ACTIVE + ' (holdings always included, plus rotating explorer slots). Today\'s listing is the one present-day fact it knows.',
         'Options: up to ' + OPT_MAX_OPEN + ' one-month at-the-money calls/puts, premium capped at ' + Math.round(OPT_TOTAL_BUDGET * 100) +
         '% of equity, priced by Black-Scholes from the day\'s close and trailing ' + OPT_VOL_WINDOW + '-day realized volatility (rates 0, fractional contracts) — no historical option quotes exist, so it prices them honestly itself.',
         'News is read only at the present day (word-count sentiment on real headlines for its holdings) and only tilts the practice mirror — never a rewind decision.',
-        'Universe: ' + state.universe.length + ' current US stocks — ' + (WORLDS[state.universeWorld] ? WORLDS[state.universeWorld].label : 'chosen before world bands existed') +
-        ' (the one present-day fact it knows). Virtual money; educational only.',
+        'Virtual money; educational only.',
       ],
       status: {
         simulatedUpTo: robo.cursorDate,
@@ -1416,6 +1563,7 @@ const AutoResearch = (() => {
       months: robo.months,
       learning: robo.stats,
       todaysNews: state.news,
+      studied: { count: Object.keys(state.studied).length, usable: Object.values(state.studied).filter(s => s.ok === 1).length },
       openPositions: robo.positions,
       openOptions: robo.options,
       journal: robo.journal,

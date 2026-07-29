@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Strategy Race Simulator — Stock Analysis &amp; Strategy Lab</title>
   <!-- ?v= busts stale browser caches — bump it when shipping changes -->
-  <link rel="stylesheet" href="css/styles.css?v=17" />
+  <link rel="stylesheet" href="css/styles.css?v=18" />
 </head>
 <body>
   <header class="app-header">
@@ -23,9 +23,12 @@
       <h2>Auto-trader — it lives through the market on its own</h2>
       <p class="hint">
         This robot is born <b>five years in the past</b> with <b>$1,000</b> of virtual money and
-        lives forward one market day at a time. Its world is a <b>merit mix</b> — the biggest
-        stocks PLUS the strongest recent movers, the best-rated, and the most traded — not just
-        the largest by size. It carries a <b>monthly goal</b> (default $2,000): a missed month
+        lives forward one market day at a time. It <b>gathers the entire stock listing</b>: a
+        merit-mix seed first (biggest + strongest movers + best-rated + most traded), then it
+        studies stock after stock from the whole screener — every one remembered forever, its
+        pool growing run after run (histories load one at a time, so "all" is a journey, not one
+        click). Each session it actively trades the most promising ~60, holdings always included.
+        It carries a <b>monthly goal</b> (default $2,000): a missed month
         makes it trade hungrier the next (lower entry bar, bigger positions, more option budget —
         hard caps still apply), and its summary tells you honestly how much capital that goal
         really needs. The rules it must obey: it <b>cannot look ahead</b>
@@ -55,9 +58,9 @@
           <input id="auto-goal" type="number" value="2000" min="100" step="100" />
         </div>
         <div class="control">
-          <label for="auto-mincap">Its world: which stocks exist (applies to a new life)</label>
+          <label for="auto-mincap">Its gathering focus (which stocks it studies)</label>
           <select id="auto-mincap">
-            <option value="all" selected>All sizes — a merit mix ($300M and up)</option>
+            <option value="all" selected>Every listed stock (above $5 &amp; liquid)</option>
             <option value="large">Large caps only (over $10B)</option>
             <option value="mid">Mid caps ($2B–$10B)</option>
             <option value="small">Small caps ($300M–$2B)</option>
@@ -211,13 +214,13 @@
     </footer>
   </main>
 
-  <script src="js/indicators.js?v=17"></script>
-  <script src="js/data.js?v=17"></script>
-  <script src="js/strategies.js?v=17"></script>
-  <script src="js/simulation.js?v=17"></script>
-  <script src="js/practice.js?v=17"></script>
-  <script src="js/chart.js?v=17"></script>
-  <script src="js/sim-page.js?v=17"></script>
-  <script src="js/auto-research.js?v=17"></script>
+  <script src="js/indicators.js?v=18"></script>
+  <script src="js/data.js?v=18"></script>
+  <script src="js/strategies.js?v=18"></script>
+  <script src="js/simulation.js?v=18"></script>
+  <script src="js/practice.js?v=18"></script>
+  <script src="js/chart.js?v=18"></script>
+  <script src="js/sim-page.js?v=18"></script>
+  <script src="js/auto-research.js?v=18"></script>
 </body>
 </html>
